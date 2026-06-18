@@ -16,3 +16,12 @@ CAMBIAR LAS REGLAS EN BD:
 
 
 creas un PROYECTO de tipo cigo, le pones el nombre y te da todos los datos que necesitas para index.html
+
+
+clave administrador
+Pasos:
+
+Entrás a console.firebase.google.com
+Seleccionás el proyecto webtest-40ede
+En el menú izquierdo → Realtime Database
+Navegás al nodo /usuarios/administrador/pass
