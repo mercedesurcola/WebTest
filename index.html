@@ -1,0 +1,2510 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mi Sitio Web</title>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       FIREBASE CONFIG — Reemplazar con los datos reales del proyecto
+       Se obtienen en: Firebase Console → Configuración del proyecto → SDK
+  ═══════════════════════════════════════════════════════════ -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, set, get, onValue }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    // ── ▼ EDITAR ESTOS DATOS ▼ ──────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "TU_API_KEY",
+      authDomain:        "suso-b6d55.firebaseapp.com",
+      databaseURL:       "https://suso-b6d55-default-rtdb.firebaseio.com",
+      projectId:         "suso-b6d55",
+      storageBucket:     "suso-b6d55.appspot.com",
+      messagingSenderId: "TU_SENDER_ID",
+      appId:             "TU_APP_ID"
+    };
+    // ── ▲ FIN EDITAR ▲ ──────────────────────────────────────────
+
+    // ── Credenciales del admin ───────────────────────────────────
+    const ADMIN_USER = "admin";
+    const ADMIN_PASS = "123";
+    // ────────────────────────────────────────────────────────────
+
+    const app     = initializeApp(firebaseConfig);
+    const db      = getDatabase(app);
+
+    // ── Datos por defecto ────────────────────────────────────────
+    const DEFAULT_DATA = {
+      empresa: {
+        nombre: "Mi Empresa",
+        logo:   ""
+      },
+      portada: {
+        eyebrow:  "Bienvenidos",
+        titulo:   "Construimos\nexperiencias digitales",
+        subtitulo: "Explorá nuestro trabajo y conocé todo lo que podemos hacer por vos."
+      },
+      secciones: {
+        s1: {
+          orden:     1,
+          titulo:    "Bienvenidos",
+          subtitulo: "Subtítulo de la primera sección",
+          texto:     "Aquí va el texto principal de esta sección. Podés editarlo desde el panel de administración.",
+          imagenes:  [],
+          videos:    []
+        },
+        s2: {
+          orden:     2,
+          titulo:    "Nuestros Servicios",
+          subtitulo: "Lo que hacemos por vos",
+          texto:     "Describí aquí los servicios o productos que ofrecés. Esta sección es completamente personalizable.",
+          imagenes:  [],
+          videos:    []
+        },
+        s3: {
+          orden:     3,
+          titulo:    "Nosotros",
+          subtitulo: "Conocé nuestro equipo",
+          texto:     "Contá la historia de tu empresa, quiénes son, qué los motiva y por qué los clientes deberían elegirnos.",
+          imagenes:  [],
+          videos:    []
+        }
+      },
+      contacto: {
+        titulo:    "Contacto",
+        subtitulo: "Estamos para ayudarte",
+        texto:     "Completá el formulario y nos comunicamos a la brevedad.",
+        email:     "info@miempresa.com",
+        telefono:  "+54 11 0000-0000",
+        direccion: "Ciudad, País",
+        whatsapp:  "",
+        whatsappMensaje: "Hola",
+        instagram: ""
+      },
+      diseno: {
+        colores: {
+          bg:      "#0F0F0F",
+          surface: "#1A1A1A",
+          border:  "#2D2D2D",
+          texto:   "#F5F0E8",
+          muted:   "#8A8078",
+          acento:  "#C8A96E",
+          acentoDim: "#7A6543"
+        },
+        tipografia: {
+          display: "Playfair Display",
+          body:    "Inter"
+        },
+        botones: {
+          estilo:  "solid",   // solid | outline | ghost
+          radio:   "6"        // px
+        },
+        secciones: {
+          alternas: true      // fondo alterno en secciones pares
+        },
+        ecommerce: false      // muestra botón hacia ecommerce.html
+      }
+    };
+
+    // ── Convertir imagen a base64 (sin Storage, directo a Database) ────
+    async function imageToBase64(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let w = img.width, h = img.height;
+            
+            if (w > 800 || h > 800) {
+              if (w > h) { h = Math.round(h * 800 / w); w = 800; }
+              else       { w = Math.round(w * 800 / h); h = 800; }
+            }
+            
+            canvas.width  = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+            
+            // Convertir a data URL base64 (JPEG)
+            const b64 = canvas.toDataURL("image/jpeg", 0.65);
+            const sizeKB = Math.round(b64.length * 0.75 / 1024);
+            console.log(`Imagen comprimida: ${sizeKB}KB (${w}x${h})`);
+            resolve(b64);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // ── Cargar datos de Firebase (o defaults si no existen) ──────
+    async function loadData() {
+      const snap = await get(ref(db, "sitio"));
+      if (snap.exists()) return snap.val();
+      await set(ref(db, "sitio"), DEFAULT_DATA);
+      return DEFAULT_DATA;
+    }
+
+    // ── Guardar en Firebase ──────────────────────────────────────
+    async function saveData(data) {
+      await set(ref(db, "sitio"), data);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  APLICAR DISEÑO — actualiza CSS variables en tiempo real
+    // ══════════════════════════════════════════════════════════════
+    const GOOGLE_FONTS_DISPLAY = [
+      "Playfair Display","Merriweather","Lora","Cormorant Garamond",
+      "DM Serif Display","Libre Baskerville","EB Garamond","Abril Fatface",
+      "Raleway","Oswald","Montserrat","Poppins","Nunito","Bebas Neue"
+    ];
+    const GOOGLE_FONTS_BODY = [
+      "Inter","Roboto","Open Sans","Lato","Source Sans 3","Nunito Sans",
+      "DM Sans","Manrope","Work Sans","Karla","Mulish","Plus Jakarta Sans"
+    ];
+
+    let _loadedFonts = new Set();
+    function loadGoogleFont(family) {
+      if (_loadedFonts.has(family)) return;
+      _loadedFonts.add(family);
+      const link = document.createElement("link");
+      link.rel  = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@300;400;500;600;700&display=swap`;
+      document.head.appendChild(link);
+    }
+
+    function applyDiseno(d) {
+      if (!d) return;
+      const root = document.documentElement;
+      const c = d.colores || {};
+      const t = d.tipografia || {};
+      const b = d.botones || {};
+
+      if (c.bg)        root.style.setProperty("--bg",        c.bg);
+      if (c.surface)   root.style.setProperty("--surface",   c.surface);
+      if (c.border)    root.style.setProperty("--border",    c.border);
+      if (c.texto)     root.style.setProperty("--text",      c.texto);
+      if (c.muted)     root.style.setProperty("--muted",     c.muted);
+      if (c.acento)    root.style.setProperty("--gold",      c.acento);
+      if (c.acentoDim) root.style.setProperty("--gold-dim",  c.acentoDim);
+
+      if (t.display) {
+        loadGoogleFont(t.display);
+        root.style.setProperty("--font-display", `'${t.display}', Georgia, serif`);
+      }
+      if (t.body) {
+        loadGoogleFont(t.body);
+        root.style.setProperty("--font-body", `'${t.body}', system-ui, sans-serif`);
+      }
+
+      const r = parseInt(b.radio) || 6;
+      root.style.setProperty("--radius", `${r}px`);
+
+      // Estilo de botones: solid | outline | ghost
+      const estilo = b.estilo || "solid";
+      root.style.setProperty("--btn-bg",     estilo === "solid"   ? "var(--gold)" :
+                                             estilo === "outline" ? "transparent" : "transparent");
+      root.style.setProperty("--btn-color",  estilo === "solid"   ? "var(--bg)"   : "var(--gold)");
+      root.style.setProperty("--btn-border", estilo === "ghost"   ? "transparent" : "var(--gold)");
+      root.style.setProperty("--btn-hover-bg",    estilo === "ghost" ? "rgba(200,169,110,0.1)" : "var(--gold)");
+      root.style.setProperty("--btn-hover-color",  estilo === "solid" ? "var(--bg)" : "var(--gold)");
+
+      // Secciones alternas
+      const alternas = d.secciones?.alternas !== false;
+      document.getElementById("style-alternas").textContent = alternas
+        ? ".seccion:nth-child(even) { background: var(--surface); }"
+        : "";
+    }
+
+    // ── Render del sitio público ─────────────────────────────────
+    function renderSite(data) {
+      const { empresa, portada, secciones, contacto } = data;
+      applyDiseno(data.diseno);
+
+      // Navbar
+      document.getElementById("nav-nombre").textContent = empresa.nombre;
+      const fn = document.getElementById("footer-nombre");
+      if (fn) fn.textContent = empresa.nombre;
+      if (empresa.logo) {
+        document.getElementById("nav-logo").src = empresa.logo;
+        document.getElementById("nav-logo").style.display = "block";
+      }
+
+      // Título de página
+      document.title = empresa.nombre;
+
+      // Portada / Hero
+      const p = portada || {};
+      document.getElementById("hero-eyebrow").textContent  = p.eyebrow  || "";
+      document.getElementById("hero-titulo").innerHTML     = esc(p.titulo || "").replace(/\n/g, "<br/>");
+      document.getElementById("hero-desc").textContent     = p.subtitulo || "";
+
+      // Secciones
+      const secContainer = document.getElementById("secciones-container");
+      secContainer.innerHTML = "";
+      const orden = Object.entries(secciones).sort((a, b) => a[1].orden - b[1].orden);
+
+      orden.forEach(([id, sec]) => {
+        const el = document.createElement("section");
+        el.className = "seccion";
+        el.id = `sec-${id}`;
+
+        // Videos HTML — thumbnail clicable, abre en YouTube
+        const videos = (sec.videos || []).filter(url => youtubeId(url));
+        const videosHTML = videos.map((url, idx) => {
+          const id = youtubeId(url);
+          return `<a class="carousel-item" data-idx="${idx}" href="${youtubeURL(url)}" target="_blank" rel="noopener" aria-label="Ver en YouTube">
+            <img src="${youtubeThumb(id)}" alt="Video" loading="lazy" />
+            <span class="play-btn">
+              <svg viewBox="0 0 68 48" width="68" height="48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#ff0000"/><path d="M45 24 27 14v20" fill="#fff"/></svg>
+            </span>
+          </a>`;
+        }).join("");
+
+        // Imágenes HTML
+        const imagenes = (sec.imagenes || []);
+        const imagenesHTML = imagenes.map((url, idx) =>
+          `<div class="carousel-item" data-idx="${idx}"><img src="${url}" alt="" loading="lazy" /></div>`
+        ).join("");
+
+        // Combinar imágenes y videos en un solo carousel
+        const allMedia = imagenesHTML + videosHTML;
+        const totalMedia = imagenes.length + videos.length;
+        const hasMultiple = totalMedia > 1;
+
+        el.innerHTML = `
+          <div class="sec-inner">
+            <div class="sec-text">
+              <span class="sec-label">${String(sec.orden).padStart(2,"0")}</span>
+              <h2>${esc(sec.titulo)}</h2>
+              <p class="sec-subtitulo">${esc(sec.subtitulo)}</p>
+              <p class="sec-body">${esc(sec.texto)}</p>
+            </div>
+            ${allMedia ? `<div class="sec-media">
+              <div class="carousel-container">
+                <div class="carousel-track">${allMedia}</div>
+                ${hasMultiple ? `
+                  <button class="carousel-nav carousel-prev" aria-label="Anterior">‹</button>
+                  <button class="carousel-nav carousel-next" aria-label="Siguiente">›</button>
+                  <div class="carousel-dots">
+                    ${Array.from({length: totalMedia}, (_, i) => 
+                      `<button class="dot ${i === 0 ? 'active' : ''}" data-slide="${i}" aria-label="Ir a slide ${i+1}"></button>`
+                    ).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            </div>` : ""}
+          </div>`;
+        secContainer.appendChild(el);
+
+        // Carousel control
+        if (hasMultiple) {
+          const track = el.querySelector(".carousel-track");
+          const prevBtn = el.querySelector(".carousel-prev");
+          const nextBtn = el.querySelector(".carousel-next");
+          const dots = el.querySelectorAll(".dot");
+          let currentSlide = 0;
+
+          function goToSlide(idx) {
+            currentSlide = idx % totalMedia;
+            track.style.transform = `translateX(-${currentSlide * 100}%)`;
+            dots.forEach((d, i) => d.classList.toggle("active", i === currentSlide));
+          }
+
+          prevBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            goToSlide(currentSlide - 1 + totalMedia);
+          });
+
+          nextBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            goToSlide(currentSlide + 1);
+          });
+
+          dots.forEach(dot => {
+            dot.addEventListener("click", () => goToSlide(parseInt(dot.dataset.slide)));
+          });
+
+          // Keyboard support
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowLeft") prevBtn.click();
+            if (e.key === "ArrowRight") nextBtn.click();
+          });
+        }
+      });
+
+      // Contacto
+      document.getElementById("contacto-titulo").textContent    = contacto.titulo;
+      document.getElementById("contacto-subtitulo").textContent = contacto.subtitulo;
+      document.getElementById("contacto-texto").textContent     = contacto.texto;
+
+      // Email
+      const elEmail = document.getElementById("contacto-email");
+      elEmail.textContent = contacto.email;
+      elEmail.href        = `mailto:${contacto.email}`;
+
+      // Teléfono (link tel:)
+      const elTel = document.getElementById("contacto-tel");
+      elTel.textContent = contacto.telefono;
+      elTel.href        = `tel:${contacto.telefono.replace(/\s/g,"")}`;
+
+      // Dirección (texto plano)
+      document.getElementById("contacto-dir").textContent = contacto.direccion;
+
+      // Instagram
+      const elIg = document.getElementById("contacto-ig");
+      if (contacto.instagram) {
+        const igHandle = contacto.instagram.replace(/^@/,"").replace(/.*instagram\.com\//,"");
+        elIg.textContent = `@${igHandle}`;
+        elIg.href        = `https://www.instagram.com/${igHandle}`;
+        elIg.closest(".contacto-item").style.display = "flex";
+      } else {
+        elIg.closest(".contacto-item").style.display = "none";
+      }
+
+      // WhatsApp — botón en contacto + botón flotante
+      const waNum = (contacto.whatsapp || "").replace(/\D/g,"");
+      const waMsg = contacto.whatsappMensaje || "Hola";
+      const waUrl = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(waMsg)}` : "#";
+      const waVisible = !!waNum;
+
+      const elWaFloat = document.getElementById("wa-float");
+      elWaFloat.href = waUrl;
+      elWaFloat.style.display = waVisible ? "flex" : "none";
+
+      // Nav links
+      const navLinks = document.getElementById("nav-links");
+      navLinks.innerHTML = "";
+      orden.forEach(([id, sec]) => {
+        const a = document.createElement("a");
+        a.href = `#sec-${id}`;
+        a.textContent = sec.titulo;
+        navLinks.appendChild(a);
+      });
+      const ac = document.createElement("a");
+      ac.href = "#contacto";
+      ac.textContent = contacto.titulo;
+      navLinks.appendChild(ac);
+
+      // Botón e-commerce
+      const tieneEcom = data.diseno?.ecommerce === true;
+      const btnEcomNav  = document.getElementById("btn-ecommerce-nav");
+      const btnEcomHero = document.getElementById("btn-ecommerce-hero");
+      if (btnEcomNav)  btnEcomNav.style.display  = tieneEcom ? "inline-flex" : "none";
+      if (btnEcomHero) btnEcomHero.style.display = tieneEcom ? "inline-block" : "none";
+    }
+
+    // ── Extraer ID de YouTube ────────────────────────────────────
+    function youtubeId(url) {
+      const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+      return match ? match[1] : null;
+    }
+
+    function youtubeThumb(id) {
+      // maxresdefault puede no existir en videos viejos, hqdefault siempre existe
+      return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+    }
+
+    function youtubeURL(url) {
+      const id = youtubeId(url);
+      return id ? `https://www.youtube.com/watch?v=${id}` : url;
+    }
+
+    function esc(str) {
+      return (str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  PANEL DE ADMINISTRACIÓN
+    // ══════════════════════════════════════════════════════════════
+    let siteData = null;
+
+    function buildAdminPanel(data) {
+      siteData = JSON.parse(JSON.stringify(data)); // deep clone
+      const panel = document.getElementById("admin-panel");
+
+      // Empresa
+      document.getElementById("a-nombre").value = data.empresa.nombre;
+
+      // Logo preview
+      if (data.empresa.logo) {
+        document.getElementById("logo-preview").src = data.empresa.logo;
+        document.getElementById("logo-preview").style.display = "block";
+      }
+
+      // Portada
+      const p = data.portada || {};
+      document.getElementById("a-p-eyebrow").value  = p.eyebrow  || "";
+      document.getElementById("a-p-titulo").value   = p.titulo   || "";
+      document.getElementById("a-p-subtitulo").value= p.subtitulo|| "";
+
+      // Secciones
+      renderAdminSecciones();
+
+      // Contacto
+      const c = data.contacto;
+      document.getElementById("a-c-titulo").value    = c.titulo;
+      document.getElementById("a-c-subtitulo").value = c.subtitulo;
+      document.getElementById("a-c-texto").value     = c.texto;
+      document.getElementById("a-c-email").value     = c.email;
+      document.getElementById("a-c-tel").value       = c.telefono;
+      document.getElementById("a-c-dir").value       = c.direccion;
+      document.getElementById("a-c-wa").value        = c.whatsapp  || "";
+      document.getElementById("a-c-wamsg").value     = c.whatsappMensaje || "Hola";
+      document.getElementById("a-c-ig").value        = c.instagram || "";
+
+      // Diseño
+      buildAdminDiseno(data.diseno);
+
+      // Plantillas
+      renderPlantillasCards(data.diseno);
+    }
+
+    function renderPlantillasCards(disenoActual) {
+      const grid = document.getElementById("plantillas-grid");
+      if (!grid) return;
+      grid.innerHTML = PLANTILLAS.map(pl => {
+        const c = pl.diseno.colores;
+        const isActive = disenoActual?.colores?.bg === c.bg && disenoActual?.colores?.acento === c.acento;
+        return `
+        <div class="plantilla-card ${isActive ? "active" : ""}" data-id="${pl.id}">
+          <div class="plantilla-preview" style="background:${c.bg};border-color:${c.border};">
+            <div class="pp-navbar" style="background:${c.surface};border-color:${c.border};">
+              <div class="pp-dot" style="background:${c.acento};"></div>
+              <div class="pp-line" style="background:${c.muted};width:40%;"></div>
+              <div class="pp-line" style="background:${c.muted};width:20%;"></div>
+            </div>
+            <div class="pp-hero" style="background:${c.bg};">
+              <div class="pp-line pp-title" style="background:${c.texto};width:70%;height:8px;"></div>
+              <div class="pp-line" style="background:${c.muted};width:50%;"></div>
+              <div class="pp-btn" style="background:${pl.diseno.botones.estilo === 'solid' ? c.acento : 'transparent'};border:2px solid ${c.acento};border-radius:${Math.min(parseInt(pl.diseno.botones.radio),6)}px;color:${pl.diseno.botones.estilo === 'solid' ? c.bg : c.acento};">Ver más</div>
+            </div>
+            <div class="pp-section" style="background:${c.surface};border-color:${c.border};">
+              <div class="pp-line" style="background:${c.acento};width:20%;height:3px;"></div>
+              <div class="pp-line" style="background:${c.texto};width:60%;height:6px;"></div>
+              <div class="pp-line" style="background:${c.muted};width:80%;"></div>
+              <div class="pp-line" style="background:${c.muted};width:65%;"></div>
+            </div>
+          </div>
+          <div class="plantilla-info">
+            <strong style="color:${isActive ? 'var(--gold)' : 'var(--text)'}">${pl.nombre}</strong>
+            <span>${pl.descripcion}</span>
+            <span class="plantilla-perfil">${pl.perfil}</span>
+          </div>
+          <button class="btn-apply-plantilla" data-id="${pl.id}">${isActive ? "✓ Aplicada" : "Aplicar"}</button>
+        </div>`;
+      }).join("");
+
+      grid.querySelectorAll(".btn-apply-plantilla").forEach(btn => {
+        btn.addEventListener("click", e => {
+          applyPlantilla(e.target.dataset.id);
+          // Actualizar textos de los botones
+          grid.querySelectorAll(".btn-apply-plantilla").forEach(b => {
+            b.textContent = b.dataset.id === e.target.dataset.id ? "✓ Aplicada" : "Aplicar";
+          });
+          grid.querySelectorAll(".plantilla-info strong").forEach((s, i) => {
+            s.style.color = PLANTILLAS[i].id === e.target.dataset.id ? "var(--gold)" : "var(--text)";
+          });
+        });
+      });
+
+      const btnDeshacer = document.getElementById("btn-deshacer-plantilla");
+      if (btnDeshacer) {
+        btnDeshacer.addEventListener("click", () => {
+          deshacerPlantilla();
+          renderPlantillasCards(collectDiseno());
+        });
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  PLANTILLAS
+    // ══════════════════════════════════════════════════════════════
+    const PLANTILLAS = [
+      {
+        id:          "nocturna",
+        nombre:      "Nocturna",
+        descripcion: "Dark luxury · Profesionales & servicios premium",
+        perfil:      "Psicólogos, coaches, consultoras, estudios creativos",
+        diseno: {
+          colores: {
+            bg:        "#0F0F0F",
+            surface:   "#1A1A1A",
+            border:    "#2D2D2D",
+            texto:     "#F5F0E8",
+            muted:     "#8A8078",
+            acento:    "#C8A96E",
+            acentoDim: "#7A6543"
+          },
+          tipografia: { display: "Playfair Display", body: "Inter" },
+          botones:    { estilo: "solid", radio: "6" },
+          secciones:  { alternas: true }
+        }
+      },
+      {
+        id:          "clinica",
+        nombre:      "Clínica",
+        descripcion: "Limpio & profesional · Salud y servicios de confianza",
+        perfil:      "Médicos, abogados, contadores, arquitectos",
+        diseno: {
+          colores: {
+            bg:        "#F7F8FA",
+            surface:   "#FFFFFF",
+            border:    "#DDE3EC",
+            texto:     "#1A2333",
+            muted:     "#6B7A99",
+            acento:    "#1A6B8A",
+            acentoDim: "#134F68"
+          },
+          tipografia: { display: "Lora", body: "DM Sans" },
+          botones:    { estilo: "solid", radio: "8" },
+          secciones:  { alternas: true }
+        }
+      },
+      {
+        id:          "estudio",
+        nombre:      "Estudio",
+        descripcion: "Editorial & sofisticado · Creativos y pymes de autor",
+        perfil:      "Diseñadores, arquitectos, fotógrafos, marcas de nicho",
+        diseno: {
+          colores: {
+            bg:        "#EFECE6",
+            surface:   "#E5E0D8",
+            border:    "#CECA C0",
+            texto:     "#1C1A17",
+            muted:     "#7A7060",
+            acento:    "#B85C38",
+            acentoDim: "#8C3E22"
+          },
+          tipografia: { display: "Raleway", body: "Work Sans" },
+          botones:    { estilo: "outline", radio: "2" },
+          secciones:  { alternas: true }
+        }
+      }
+    ];
+
+    // Fija el espacio extra en el color con typo
+    PLANTILLAS[2].diseno.colores.border = "#CECAC0";
+
+    let _disenoPrevio = null; // para poder deshacer
+
+    function applyPlantilla(plantillaId) {
+      const pl = PLANTILLAS.find(p => p.id === plantillaId);
+      if (!pl) return;
+      // Guardar diseño actual para poder deshacer
+      _disenoPrevio = collectDiseno();
+      // Aplicar en los controles del panel
+      buildAdminDiseno({ ...pl.diseno, secciones: siteData?.diseno?.secciones, ecommerce: siteData?.diseno?.ecommerce });
+      // Preview en vivo
+      applyDiseno(pl.diseno);
+      // Marcar card activa
+      document.querySelectorAll(".plantilla-card").forEach(c =>
+        c.classList.toggle("active", c.dataset.id === plantillaId)
+      );
+      // Mostrar botón deshacer
+      document.getElementById("btn-deshacer-plantilla").style.display = "inline-flex";
+    }
+
+    function deshacerPlantilla() {
+      if (!_disenoPrevio) return;
+      buildAdminDiseno({ ..._disenoPrevio, secciones: siteData?.diseno?.secciones });
+      applyDiseno(_disenoPrevio);
+      _disenoPrevio = null;
+      document.querySelectorAll(".plantilla-card").forEach(c => c.classList.remove("active"));
+      document.getElementById("btn-deshacer-plantilla").style.display = "none";
+    }
+
+    // ── Build panel diseño ────────────────────────────────────────
+    function buildAdminDiseno(d) {
+      if (!d) d = {};
+      const c = d.colores    || {};
+      const t = d.tipografia || {};
+      const b = d.botones    || {};
+
+      // Colores
+      const colorFields = {
+        "ad-bg":       c.bg      || "#0F0F0F",
+        "ad-surface":  c.surface || "#1A1A1A",
+        "ad-border":   c.border  || "#2D2D2D",
+        "ad-texto":    c.texto   || "#F5F0E8",
+        "ad-muted":    c.muted   || "#8A8078",
+        "ad-acento":   c.acento  || "#C8A96E",
+        "ad-acentodim":c.acentoDim || "#7A6543"
+      };
+      Object.entries(colorFields).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) { el.value = val; syncColorHex(el); }
+      });
+
+      // Tipografías
+      const selDisplay = document.getElementById("ad-font-display");
+      const selBody    = document.getElementById("ad-font-body");
+      if (selDisplay) selDisplay.value = t.display || "Playfair Display";
+      if (selBody)    selBody.value    = t.body    || "Inter";
+      updateFontPreview();
+
+      // Botones
+      const estilo  = b.estilo || "solid";
+      const selRadio = document.querySelector(`input[name="btn-estilo"][value="${estilo}"]`);
+      if (selRadio) selRadio.checked = true;
+      const inpRadio  = document.getElementById("ad-btn-radio");
+      const lblRadio  = document.getElementById("ad-btn-radio-val");
+      if (inpRadio)  { inpRadio.value = b.radio || "6"; lblRadio.textContent = `${b.radio || 6}px`; }
+      updateBtnPreview();
+
+      // Alternas
+      const chk = document.getElementById("ad-alternas");
+      if (chk) chk.checked = d.secciones?.alternas !== false;
+
+      // E-commerce
+      const chkEc = document.getElementById("ad-ecommerce");
+      if (chkEc) chkEc.checked = d.ecommerce === true;
+    }
+
+    function syncColorHex(input) {
+      const hex = document.getElementById(input.id + "-hex");
+      if (hex) hex.value = input.value.toUpperCase();
+    }
+
+    function updateFontPreview() {
+      const display = document.getElementById("ad-font-display")?.value || "Playfair Display";
+      const body    = document.getElementById("ad-font-body")?.value    || "Inter";
+      loadGoogleFont(display);
+      loadGoogleFont(body);
+      const prev = document.getElementById("font-preview");
+      if (prev) {
+        prev.querySelector(".fp-display").style.fontFamily = `'${display}', serif`;
+        prev.querySelector(".fp-body").style.fontFamily    = `'${body}', sans-serif`;
+        prev.querySelector(".fp-display").textContent = display;
+        prev.querySelector(".fp-body").textContent    = `${body} — El texto del cuerpo usa esta tipografía para párrafos y UI.`;
+      }
+    }
+
+    function updateBtnPreview() {
+      const estilo = document.getElementById("ad-btn-estilo")?.value || "solid";
+      const radio  = document.getElementById("ad-btn-radio")?.value  || "6";
+      const prev   = document.getElementById("btn-preview");
+      if (!prev) return;
+      const acento = document.getElementById("ad-acento")?.value || "#C8A96E";
+      prev.style.borderRadius = `${radio}px`;
+      if (estilo === "solid") {
+        prev.style.background = acento;
+        prev.style.color      = "#0F0F0F";
+        prev.style.border     = `2px solid ${acento}`;
+      } else if (estilo === "outline") {
+        prev.style.background = "transparent";
+        prev.style.color      = acento;
+        prev.style.border     = `2px solid ${acento}`;
+      } else {
+        prev.style.background = "transparent";
+        prev.style.color      = acento;
+        prev.style.border     = "2px solid transparent";
+        prev.style.textDecoration = "underline";
+      }
+    }
+
+    function collectDiseno() {
+      const estiloEl = document.querySelector('input[name="btn-estilo"]:checked');
+      return {
+        colores: {
+          bg:        document.getElementById("ad-bg")?.value        || "#0F0F0F",
+          surface:   document.getElementById("ad-surface")?.value   || "#1A1A1A",
+          border:    document.getElementById("ad-border")?.value    || "#2D2D2D",
+          texto:     document.getElementById("ad-texto")?.value     || "#F5F0E8",
+          muted:     document.getElementById("ad-muted")?.value     || "#8A8078",
+          acento:    document.getElementById("ad-acento")?.value    || "#C8A96E",
+          acentoDim: document.getElementById("ad-acentodim")?.value || "#7A6543"
+        },
+        tipografia: {
+          display: document.getElementById("ad-font-display")?.value || "Playfair Display",
+          body:    document.getElementById("ad-font-body")?.value    || "Inter"
+        },
+        botones: {
+          estilo: estiloEl?.value || "solid",
+          radio:  document.getElementById("ad-btn-radio")?.value  || "6"
+        },
+        secciones: {
+          alternas: document.getElementById("ad-alternas")?.checked !== false
+        },
+        ecommerce: document.getElementById("ad-ecommerce")?.checked === true
+      };
+    }
+
+    function renderAdminSecciones() {
+      const cont = document.getElementById("admin-secciones");
+      cont.innerHTML = "";
+      const orden = Object.entries(siteData.secciones).sort((a,b) => a[1].orden - b[1].orden);
+
+      orden.forEach(([id, sec]) => {
+        const div = document.createElement("div");
+        div.className = "admin-sec-card";
+        div.dataset.id = id;
+
+        const imgsHTML = (sec.imagenes || []).map((url, i) =>
+          `<div class="thumb-item">
+            <img src="${url}" />
+            <button class="btn-del-img" data-sec="${id}" data-idx="${i}">✕</button>
+          </div>`
+        ).join("");
+
+        const vidsHTML = (sec.videos || []).map((url, i) =>
+          `<div class="vid-item">
+            <span>${url}</span>
+            <button class="btn-del-vid" data-sec="${id}" data-idx="${i}">✕</button>
+          </div>`
+        ).join("");
+
+        div.innerHTML = `
+          <div class="admin-sec-header">
+            <span class="sec-num">Sección ${sec.orden}</span>
+            <button class="btn-del-sec" data-id="${id}">Eliminar sección</button>
+          </div>
+          <label>Título</label>
+          <input type="text" class="sec-field" data-id="${id}" data-field="titulo" value="${esc(sec.titulo)}" />
+          <label>Subtítulo</label>
+          <input type="text" class="sec-field" data-id="${id}" data-field="subtitulo" value="${esc(sec.subtitulo)}" />
+          <label>Texto</label>
+          <textarea class="sec-field" data-id="${id}" data-field="texto" rows="4">${esc(sec.texto)}</textarea>
+
+          <label>Imágenes</label>
+          <div class="thumbs-grid" id="thumbs-${id}">${imgsHTML}</div>
+          <label class="btn-upload-label">
+            + Agregar imágenes
+            <input type="file" accept="image/*" multiple class="img-upload" data-sec="${id}" />
+          </label>
+
+          <label>Videos de YouTube (un link por línea)</label>
+          <div class="vids-list" id="vids-${id}">${vidsHTML}</div>
+          <div class="add-video-row">
+            <input type="url" class="vid-input" data-sec="${id}" placeholder="https://youtube.com/watch?v=..." />
+            <button class="btn-add-vid" data-sec="${id}">Agregar</button>
+          </div>`;
+
+        cont.appendChild(div);
+      });
+
+      // Eventos de secciones
+      cont.querySelectorAll(".sec-field").forEach(el => {
+        el.addEventListener("input", e => {
+          siteData.secciones[e.target.dataset.id][e.target.dataset.field] = e.target.value;
+        });
+      });
+
+      cont.querySelectorAll(".img-upload").forEach(input => {
+        input.addEventListener("change", async e => {
+          const secId = e.target.dataset.sec;
+          const files = Array.from(e.target.files);
+          showToast("Comprimiendo imágenes…", "info");
+          for (const file of files) {
+            const b64 = await imageToBase64(file);
+            if (!siteData.secciones[secId].imagenes) siteData.secciones[secId].imagenes = [];
+            siteData.secciones[secId].imagenes.push(b64);
+          }
+          renderAdminSecciones();
+          showToast("Imágenes guardadas ✓", "ok");
+        });
+      });
+
+      cont.querySelectorAll(".btn-del-img").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const { sec, idx } = e.target.dataset;
+          siteData.secciones[sec].imagenes.splice(parseInt(idx), 1);
+          renderAdminSecciones();
+        });
+      });
+
+      cont.querySelectorAll(".btn-add-vid").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const secId = e.target.dataset.sec;
+          const input = cont.querySelector(`.vid-input[data-sec="${secId}"]`);
+          if (!input.value.trim()) return;
+          if (!siteData.secciones[secId].videos) siteData.secciones[secId].videos = [];
+          siteData.secciones[secId].videos.push(input.value.trim());
+          input.value = "";
+          renderAdminSecciones();
+        });
+      });
+
+      cont.querySelectorAll(".btn-del-vid").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const { sec, idx } = e.target.dataset;
+          siteData.secciones[sec].videos.splice(parseInt(idx), 1);
+          renderAdminSecciones();
+        });
+      });
+
+      cont.querySelectorAll(".btn-del-sec").forEach(btn => {
+        btn.addEventListener("click", e => {
+          if (!confirm("¿Eliminar esta sección?")) return;
+          delete siteData.secciones[e.target.dataset.id];
+          renderAdminSecciones();
+        });
+      });
+    }
+
+    // ── Toast ─────────────────────────────────────────────────────
+    function showToast(msg, type = "ok") {
+      const t = document.getElementById("toast");
+      t.textContent  = msg;
+      t.className    = `toast toast-${type} show`;
+      clearTimeout(t._to);
+      t._to = setTimeout(() => t.classList.remove("show"), 3000);
+    }
+
+    // ── INIT ──────────────────────────────────────────────────────
+    window.addEventListener("DOMContentLoaded", async () => {
+
+      // Cargar y renderizar
+      const data = await loadData();
+      renderSite(data);
+
+      // Revelar sitio, ocultar loader
+      const loader  = document.getElementById("site-loader");
+      const content = document.getElementById("site-content");
+      loader.classList.add("hidden");
+      content.classList.add("ready");
+      setTimeout(() => loader.remove(), 400);
+
+      // ── Login admin ──────────────────────────────────────────────
+      document.getElementById("btn-login").addEventListener("click", () => {
+        const u = document.getElementById("login-user").value.trim();
+        const p = document.getElementById("login-pass").value;
+        if (u === ADMIN_USER && p === ADMIN_PASS) {
+          document.getElementById("login-modal").style.display = "none";
+          document.getElementById("admin-panel").style.display = "flex";
+          buildAdminPanel(data);
+        } else {
+          document.getElementById("login-error").style.display = "block";
+        }
+      });
+
+      document.getElementById("login-pass").addEventListener("keydown", e => {
+        if (e.key === "Enter") document.getElementById("btn-login").click();
+      });
+
+      // Abrir modal login
+      document.getElementById("btn-admin").addEventListener("click", () => {
+        document.getElementById("login-modal").style.display = "flex";
+      });
+
+      document.getElementById("btn-login-close").addEventListener("click", () => {
+        document.getElementById("login-modal").style.display = "none";
+      });
+
+      // Cerrar admin
+      document.getElementById("btn-admin-close").addEventListener("click", () => {
+        document.getElementById("admin-panel").style.display = "none";
+      });
+
+      // Logo upload
+      document.getElementById("logo-upload").addEventListener("change", async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        showToast("Comprimiendo logo…", "info");
+        const b64 = await imageToBase64(file);
+        siteData.empresa.logo = b64;
+        document.getElementById("logo-preview").src = b64;
+        document.getElementById("logo-preview").style.display = "block";
+        showToast("Logo actualizado ✓");
+      });
+
+      // Nombre empresa
+      document.getElementById("a-nombre").addEventListener("input", e => {
+        siteData.empresa.nombre = e.target.value;
+      });
+
+      // Portada live preview
+      ["a-p-eyebrow","a-p-titulo","a-p-subtitulo"].forEach(id => {
+        document.getElementById(id).addEventListener("input", e => {
+          if (!siteData.portada) siteData.portada = {};
+          const map = { "a-p-eyebrow":"eyebrow", "a-p-titulo":"titulo", "a-p-subtitulo":"subtitulo" };
+          siteData.portada[map[id]] = e.target.value;
+          // preview inmediato en hero
+          const p = siteData.portada;
+          document.getElementById("hero-eyebrow").textContent = p.eyebrow || "";
+          document.getElementById("hero-titulo").innerHTML    = esc(p.titulo||"").replace(/\n/g,"<br/>");
+          document.getElementById("hero-desc").textContent    = p.subtitulo || "";
+        });
+      });
+
+      // Agregar sección
+      document.getElementById("btn-add-sec").addEventListener("click", () => {
+        const count = Object.keys(siteData.secciones).length;
+        const newId = `s${Date.now()}`;
+        siteData.secciones[newId] = {
+          orden:     count + 1,
+          titulo:    "Nueva sección",
+          subtitulo: "Subtítulo",
+          texto:     "Contenido de la sección.",
+          imagenes:  [],
+          videos:    []
+        };
+        renderAdminSecciones();
+      });
+
+      // Contacto fields
+      ["titulo","subtitulo","texto","email","tel","dir","wa","wamsg","ig"].forEach(f => {
+        document.getElementById(`a-c-${f}`).addEventListener("input", e => {
+          const map = { titulo:"titulo", subtitulo:"subtitulo", texto:"texto",
+                        email:"email", tel:"telefono", dir:"direccion",
+                        wa:"whatsapp", wamsg:"whatsappMensaje", ig:"instagram" };
+          siteData.contacto[map[f]] = e.target.value;
+        });
+      });
+
+      // Guardar
+      document.getElementById("btn-guardar").addEventListener("click", async () => {
+        showToast("Guardando…", "info");
+        try {
+          siteData.diseno = collectDiseno();
+          await saveData(siteData);
+          renderSite(siteData);
+          showToast("¡Guardado con éxito! ✓");
+        } catch (err) {
+          console.error(err);
+          showToast("Error al guardar. Revisá la conexión.", "error");
+        }
+      });
+
+      // Eventos diseño — preview en tiempo real
+      document.addEventListener("input", e => {
+        const id = e.target.id;
+        // Sync color picker → hex text
+        if (id && id.startsWith("ad-") && e.target.type === "color") {
+          syncColorHex(e.target);
+          updateBtnPreview();
+          // Preview en vivo inmediato
+          const d = collectDiseno();
+          applyDiseno(d);
+        }
+        // Sync hex text → color picker
+        if (id && id.endsWith("-hex")) {
+          const pickerId = id.replace("-hex","");
+          const picker = document.getElementById(pickerId);
+          if (picker && /^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+            picker.value = e.target.value;
+            applyDiseno(collectDiseno());
+            updateBtnPreview();
+          }
+        }
+        if (id === "ad-btn-radio") {
+          document.getElementById("ad-btn-radio-val").textContent = `${e.target.value}px`;
+          updateBtnPreview();
+          applyDiseno(collectDiseno());
+        }
+        if (id === "ad-font-display" || id === "ad-font-body") {
+          updateFontPreview();
+          applyDiseno(collectDiseno());
+        }
+        if (id === "ad-btn-estilo") {
+          updateBtnPreview();
+          applyDiseno(collectDiseno());
+        }
+        // Radio buttons (btn-estilo group)
+        if (e.target.name === "btn-estilo") {
+          updateBtnPreview();
+          applyDiseno(collectDiseno());
+        }
+      });
+
+      document.addEventListener("change", e => {
+        if (e.target.id === "ad-alternas") applyDiseno(collectDiseno());
+        if (e.target.id === "ad-ecommerce") {
+          const tieneEcom = e.target.checked;
+          const btnN = document.getElementById("btn-ecommerce-nav");
+          const btnH = document.getElementById("btn-ecommerce-hero");
+          if (btnN) btnN.style.display = tieneEcom ? "inline-flex" : "none";
+          if (btnH) btnH.style.display = tieneEcom ? "inline-block" : "none";
+        }
+        if (e.target.name === "btn-estilo") { updateBtnPreview(); applyDiseno(collectDiseno()); }
+        if (e.target.id === "ad-font-display" || e.target.id === "ad-font-body") {
+          updateFontPreview(); applyDiseno(collectDiseno());
+        }
+      });
+
+      // Tabs del admin
+      document.querySelectorAll(".admin-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".admin-tab").forEach(t => t.classList.remove("active"));
+          document.querySelectorAll(".admin-tab-panel").forEach(p => p.classList.remove("active"));
+          tab.classList.add("active");
+          document.getElementById(`tab-${tab.dataset.tab}`).classList.add("active");
+        });
+      });
+
+      // Navbar scroll
+      window.addEventListener("scroll", () => {
+        document.getElementById("navbar").classList.toggle("scrolled", window.scrollY > 40);
+      });
+
+      // Menu móvil
+      document.getElementById("btn-menu").addEventListener("click", () => {
+        document.getElementById("nav-links").classList.toggle("open");
+      });
+    });
+  </script>
+
+  <style>
+    /* ═══════════════════════════════════════
+       TOKENS
+    ═══════════════════════════════════════ */
+    :root {
+      --bg:        #0F0F0F;
+      --surface:   #1A1A1A;
+      --border:    #2D2D2D;
+      --text:      #F5F0E8;
+      --muted:     #8A8078;
+      --gold:      #C8A96E;
+      --gold-dim:  #7A6543;
+      --danger:    #E05555;
+      --ok:        #5BAD7F;
+      --info:      #6A9BD4;
+      --radius:    6px;
+      --transition: 0.25s ease;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-body:    'Inter', system-ui, sans-serif;
+      /* Botones dinámicos */
+      --btn-bg:          #C8A96E;
+      --btn-color:       #0F0F0F;
+      --btn-border:      #C8A96E;
+      --btn-hover-bg:    #C8A96E;
+      --btn-hover-color: #0F0F0F;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+    /* ═══════════════════════════════════════
+       NAVBAR
+    ═══════════════════════════════════════ */
+    #navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem; height: 64px;
+      background: transparent;
+      transition: background var(--transition), box-shadow var(--transition);
+    }
+
+    #navbar.scrolled {
+      background: rgba(15,15,15,0.95);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 1px 0 var(--border);
+    }
+
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      text-decoration: none;
+    }
+
+    #nav-logo {
+      display: none; height: 36px; width: auto; border-radius: 4px;
+    }
+
+    #nav-nombre {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    #nav-links {
+      display: flex; gap: 1.8rem; align-items: center;
+    }
+
+    #nav-links a {
+      color: var(--muted); text-decoration: none;
+      font-size: 0.85rem; font-weight: 500; letter-spacing: 0.05em;
+      text-transform: uppercase; transition: color var(--transition);
+    }
+
+    #nav-links a:hover { color: var(--gold); }
+
+    #btn-admin {
+      background: none; border: 1px solid var(--gold-dim);
+      color: var(--gold); font-size: 0.78rem; font-weight: 500;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 6px 14px; border-radius: var(--radius);
+      cursor: pointer; transition: all var(--transition); white-space: nowrap;
+    }
+
+    #btn-admin:hover { background: var(--gold); color: var(--bg); }
+
+    .nav-right { display: flex; gap: 1rem; align-items: center; }
+
+    #btn-menu {
+      display: none; background: none; border: 1px solid var(--border);
+      color: var(--text); cursor: pointer; border-radius: var(--radius);
+      width: 38px; height: 38px;
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 5px; padding: 0;
+      transition: border-color var(--transition);
+    }
+    #btn-menu:hover { border-color: var(--gold); }
+    #btn-menu span {
+      display: block; width: 18px; height: 2px;
+      background: currentColor; border-radius: 2px;
+      transition: all 0.25s ease;
+    }
+
+    /* ═══════════════════════════════════════
+       HERO
+    ═══════════════════════════════════════ */
+    #hero {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center; padding: 8rem 2rem 4rem;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(200,169,110,0.07) 0%, transparent 70%);
+      position: relative;
+    }
+
+    .hero-inner { max-width: 720px; }
+
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.72rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--gold-dim); padding-bottom: 6px;
+    }
+
+    #hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.4rem, 6vw, 4.2rem);
+      font-weight: 700; line-height: 1.1; margin-bottom: 1.2rem;
+      color: var(--text);
+    }
+
+    #hero p {
+      color: var(--muted); font-size: 1.1rem;
+      max-width: 520px; margin: 0 auto 2.4rem;
+    }
+
+    .hero-scroll {
+      display: inline-flex; flex-direction: column; align-items: center;
+      gap: 6px; color: var(--muted); font-size: 0.75rem;
+      letter-spacing: 0.12em; text-transform: uppercase;
+    }
+
+    .scroll-line {
+      width: 1px; height: 40px;
+      background: linear-gradient(to bottom, var(--gold), transparent);
+      animation: scrollAnim 2s ease-in-out infinite;
+    }
+
+    @keyframes scrollAnim {
+      0%, 100% { transform: scaleY(1); opacity: 1; }
+      50%       { transform: scaleY(0.5); opacity: 0.4; }
+    }
+
+    /* ═══════════════════════════════════════
+       SECCIONES
+    ═══════════════════════════════════════ */
+    .seccion {
+      padding: 6rem 2rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .seccion:nth-child(even) { background: var(--surface); }
+
+    .sec-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4rem;
+      align-items: center;
+    }
+
+    /* Media siempre a la derecha, texto a la izquierda */
+    .sec-media { order: 1; }
+
+    .sec-inner:has(.sec-media:empty),
+    .sec-inner:not(:has(.sec-media)) {
+      grid-template-columns: 1fr;
+      max-width: 720px;
+    }
+
+    .sec-label {
+      display: block;
+      font-size: 0.68rem; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 0.8rem;
+    }
+
+    .sec-text h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+      font-weight: 600; line-height: 1.15; margin-bottom: 0.6rem;
+    }
+
+    .sec-subtitulo {
+      color: var(--gold); font-size: 1rem;
+      font-style: italic; margin-bottom: 1rem;
+    }
+
+    .sec-body {
+      color: var(--muted); font-size: 0.97rem;
+      line-height: 1.8;
+    }
+
+    /* ═══════════════════════════════════════
+       CAROUSEL / SLIDER
+    ═══════════════════════════════════════ */
+    .carousel-container {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .carousel-track {
+      display: flex;
+      transition: transform 0.35s ease;
+    }
+
+    .carousel-item {
+      min-width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      aspect-ratio: 16/9;
+      background: #000;
+      position: relative;
+      text-decoration: none;
+    }
+
+    .carousel-item img {
+      width: 100%; height: 100%;
+      object-fit: cover; display: block;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    .carousel-item:hover img {
+      transform: scale(1.02);
+      opacity: 0.95;
+    }
+
+    .play-btn {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+
+    .play-btn svg {
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.6));
+      transition: transform 0.2s ease;
+    }
+
+    .carousel-item:hover .play-btn svg {
+      transform: scale(1.12);
+    }
+
+    .carousel-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(0,0,0,0.5); border: none; color: #fff;
+      width: 44px; height: 44px; border-radius: 50%;
+      font-size: 1.4rem; cursor: pointer; z-index: 10;
+      transition: background 0.2s ease;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .carousel-nav:hover { background: rgba(0,0,0,0.75); }
+
+    .carousel-prev { left: 12px; }
+    .carousel-next { right: 12px; }
+
+    .carousel-dots {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; z-index: 10;
+    }
+
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: rgba(255,255,255,0.4); border: none; cursor: pointer;
+      transition: background 0.2s ease;
+      padding: 0;
+    }
+
+    .dot:hover { background: rgba(255,255,255,0.6); }
+    .dot.active { background: rgba(255,255,255,0.95); }
+
+    /* ═══════════════════════════════════════
+       CONTACTO
+    ═══════════════════════════════════════ */
+    #contacto {
+      padding: 6rem 2rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .contacto-inner {
+      max-width: 900px; margin: 0 auto;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4rem;
+    }
+
+    #contacto h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+      font-weight: 600; margin-bottom: 0.6rem;
+    }
+
+    #contacto .sec-subtitulo { margin-bottom: 1rem; }
+    #contacto p { color: var(--muted); margin-bottom: 1.8rem; }
+
+    .contacto-links { display: flex; flex-direction: column; gap: 1rem; }
+
+    .contacto-item {
+      display: flex; align-items: center; gap: 0.8rem;
+      color: var(--muted); font-size: 0.9rem;
+    }
+
+    .contacto-item .icon {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--bg); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; flex-shrink: 0;
+    }
+
+    .contacto-item a {
+      color: var(--text); text-decoration: none;
+      transition: color var(--transition);
+    }
+    .contacto-item a:hover { color: var(--gold); }
+
+    /* ── WhatsApp flotante ── */
+    #wa-float {
+      position: fixed; bottom: 1.8rem; right: 1.8rem; z-index: 150;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: #25D366;
+      color: #fff;
+      align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(37,211,102,0.4);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      text-decoration: none;
+    }
+    #wa-float:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 28px rgba(37,211,102,0.55);
+    }
+    /* Pulso sutil */
+    #wa-float::before {
+      content: "";
+      position: absolute; inset: 0; border-radius: 50%;
+      background: rgba(37,211,102,0.35);
+      animation: waPulse 2.4s ease-out infinite;
+    }
+    @keyframes waPulse {
+      0%   { transform: scale(1);   opacity: 0.7; }
+      70%  { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    /* Formulario */
+    .contacto-form { display: flex; flex-direction: column; gap: 1rem; }
+
+    .form-group label {
+      display: block; font-size: 0.78rem;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); padding: 10px 14px;
+      font-family: var(--font-body); font-size: 0.9rem;
+      transition: border-color var(--transition);
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none; border-color: var(--gold);
+    }
+
+    .btn-submit {
+      background: var(--btn-bg); color: var(--btn-color);
+      border: 2px solid var(--btn-border); border-radius: var(--radius);
+      padding: 12px 28px; font-weight: 600;
+      font-size: 0.9rem; cursor: pointer;
+      transition: all var(--transition);
+      align-self: flex-start;
+    }
+
+    .btn-submit:hover {
+      background: var(--btn-hover-bg);
+      color: var(--btn-hover-color);
+      opacity: 0.9;
+    }
+
+    /* ═══════════════════════════════════════
+       FOOTER
+    ═══════════════════════════════════════ */
+    footer {
+      padding: 2rem; text-align: center;
+      color: var(--muted); font-size: 0.78rem;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ═══════════════════════════════════════
+       MODAL LOGIN
+    ═══════════════════════════════════════ */
+    #login-modal {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.7);
+      align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .login-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 2.5rem;
+      width: min(380px, 92vw); position: relative;
+    }
+
+    .login-box h3 {
+      font-family: var(--font-display); font-size: 1.4rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .login-box p { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.8rem; }
+
+    .login-box label {
+      display: block; font-size: 0.75rem;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+
+    .login-box input {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); padding: 10px 14px;
+      font-family: var(--font-body); margin-bottom: 1rem;
+      font-size: 0.9rem; transition: border-color var(--transition);
+    }
+
+    .login-box input:focus { outline: none; border-color: var(--gold); }
+
+    #login-error {
+      display: none; color: var(--danger);
+      font-size: 0.82rem; margin-top: -0.5rem; margin-bottom: 0.8rem;
+    }
+
+    #btn-login {
+      width: 100%; background: var(--gold); color: var(--bg);
+      border: none; border-radius: var(--radius);
+      padding: 12px; font-weight: 600; cursor: pointer;
+      font-size: 0.9rem; transition: opacity var(--transition);
+    }
+
+    #btn-login:hover { opacity: 0.85; }
+
+    #btn-login-close {
+      position: absolute; top: 1rem; right: 1rem;
+      background: none; border: none; color: var(--muted);
+      font-size: 1.2rem; cursor: pointer; padding: 4px;
+    }
+
+    /* ═══════════════════════════════════════
+       ADMIN PANEL
+    ═══════════════════════════════════════ */
+    #admin-panel {
+      display: none; position: fixed; inset: 0; z-index: 300;
+      flex-direction: row;
+    }
+
+    .admin-overlay {
+      flex: 1; background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(3px);
+    }
+
+    .admin-sidebar {
+      width: min(480px, 100vw);
+      background: #111;
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .admin-header {
+      padding: 1.2rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .admin-header h3 {
+      font-family: var(--font-display); font-size: 1.1rem;
+    }
+
+    .admin-header span {
+      font-size: 0.72rem; color: var(--gold);
+      letter-spacing: 0.1em; text-transform: uppercase;
+    }
+
+    #btn-admin-close {
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); border-radius: var(--radius);
+      padding: 6px 12px; cursor: pointer;
+      font-size: 0.8rem; transition: all var(--transition);
+    }
+
+    #btn-admin-close:hover { border-color: var(--danger); color: var(--danger); }
+
+    .admin-body {
+      flex: 1; overflow-y: auto; padding: 1.5rem;
+    }
+
+    .admin-section-title {
+      font-size: 0.7rem; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--gold);
+      margin-bottom: 1rem; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .admin-block { display: flex; flex-direction: column; gap: 0.8rem; }
+
+    .admin-block label {
+      font-size: 0.75rem; letter-spacing: 0.07em;
+      text-transform: uppercase; color: var(--muted);
+    }
+
+    .admin-block input,
+    .admin-block textarea {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      padding: 9px 12px; font-family: var(--font-body);
+      font-size: 0.88rem; transition: border-color var(--transition);
+      width: 100%;
+    }
+
+    .admin-block input:focus,
+    .admin-block textarea:focus { outline: none; border-color: var(--gold); }
+
+    .logo-row { display: flex; align-items: center; gap: 1rem; }
+
+    #logo-preview {
+      display: none; width: 56px; height: 56px;
+      border-radius: var(--radius); object-fit: contain;
+      border: 1px solid var(--border); background: var(--surface);
+    }
+
+    .btn-upload-label {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface); border: 1px dashed var(--border);
+      color: var(--muted); border-radius: var(--radius);
+      padding: 8px 14px; font-size: 0.82rem;
+      cursor: pointer; transition: border-color var(--transition);
+    }
+
+    .btn-upload-label:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-upload-label input { display: none; }
+
+    /* Secciones en admin */
+    .admin-sec-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.2rem;
+      display: flex; flex-direction: column; gap: 0.7rem;
+      margin-bottom: 1rem;
+    }
+
+    .admin-sec-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.4rem;
+    }
+
+    .sec-num {
+      font-size: 0.72rem; color: var(--gold);
+      letter-spacing: 0.1em; text-transform: uppercase;
+    }
+
+    .btn-del-sec {
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); font-size: 0.75rem;
+      padding: 4px 10px; border-radius: var(--radius);
+      cursor: pointer; transition: all var(--transition);
+    }
+
+    .btn-del-sec:hover { border-color: var(--danger); color: var(--danger); }
+
+    .admin-sec-card label {
+      font-size: 0.72rem; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--muted);
+    }
+
+    .admin-sec-card input,
+    .admin-sec-card textarea {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      padding: 8px 12px; font-family: var(--font-body);
+      font-size: 0.86rem; width: 100%;
+      transition: border-color var(--transition);
+    }
+
+    .admin-sec-card input:focus,
+    .admin-sec-card textarea:focus { outline: none; border-color: var(--gold); }
+
+    .thumbs-grid {
+      display: flex; flex-wrap: wrap; gap: 8px; min-height: 8px;
+    }
+
+    .thumb-item {
+      position: relative; width: 72px; height: 72px;
+    }
+
+    .thumb-item img {
+      width: 100%; height: 100%; object-fit: cover;
+      border-radius: 4px; border: 1px solid var(--border);
+    }
+
+    .btn-del-img {
+      position: absolute; top: -6px; right: -6px;
+      background: var(--danger); color: #fff;
+      border: none; border-radius: 50%;
+      width: 18px; height: 18px; font-size: 10px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+
+    .vids-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .vid-item {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 6px 10px;
+      font-size: 0.78rem; color: var(--muted);
+    }
+
+    .vid-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+
+    .btn-del-vid {
+      background: none; border: none; color: var(--danger);
+      cursor: pointer; font-size: 0.8rem; flex-shrink: 0;
+    }
+
+    .add-video-row { display: flex; gap: 8px; }
+
+    .vid-input {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      padding: 7px 11px; font-family: var(--font-body); font-size: 0.83rem;
+    }
+
+    .vid-input:focus { outline: none; border-color: var(--gold); }
+
+    .btn-add-vid {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); border-radius: var(--radius);
+      padding: 7px 14px; cursor: pointer; font-size: 0.82rem;
+      transition: all var(--transition); white-space: nowrap;
+    }
+
+    .btn-add-vid:hover { border-color: var(--gold); color: var(--gold); }
+
+    #btn-add-sec {
+      background: none; border: 1px dashed var(--gold-dim);
+      color: var(--gold); border-radius: var(--radius);
+      padding: 10px; width: 100%; cursor: pointer;
+      font-size: 0.85rem; transition: all var(--transition);
+    }
+
+    #btn-add-sec:hover { background: rgba(200,169,110,0.08); }
+
+    .admin-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #btn-guardar {
+      width: 100%; background: var(--gold); color: var(--bg);
+      border: none; border-radius: var(--radius);
+      padding: 13px; font-weight: 700; font-size: 0.95rem;
+      cursor: pointer; transition: opacity var(--transition);
+    }
+
+    #btn-guardar:hover { opacity: 0.88; }
+
+    /* ═══════════════════════════════════════
+       TOAST
+    ═══════════════════════════════════════ */
+    .toast {
+      position: fixed; bottom: 2rem; left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 10px 20px; border-radius: 99px;
+      font-size: 0.85rem; z-index: 999; transition: transform 0.3s ease;
+      pointer-events: none; white-space: nowrap;
+    }
+
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast-ok    { border-color: var(--ok);    color: var(--ok); }
+    .toast-error { border-color: var(--danger); color: var(--danger); }
+    .toast-info  { border-color: var(--info);   color: var(--info); }
+
+    /* ═══════════════════════════════════════
+       RESPONSIVE
+    ═══════════════════════════════════════ */
+    /* Botón e-commerce navbar */
+    #btn-ecommerce-nav {
+      background: var(--gold); color: var(--bg);
+      border: none; border-radius: var(--radius);
+      padding: 7px 16px; font-size: 0.8rem; font-weight: 600;
+      text-decoration: none; letter-spacing: 0.03em;
+      transition: opacity var(--transition); white-space: nowrap;
+    }
+    #btn-ecommerce-nav:hover { opacity: 0.85; }
+
+    /* Botón e-commerce hero */
+    .btn-ecommerce-hero {
+      display: inline-block;
+      background: var(--btn-bg); color: var(--btn-color);
+      border: 2px solid var(--btn-border); border-radius: var(--radius);
+      padding: 12px 28px; font-weight: 600; font-size: 0.95rem;
+      text-decoration: none; margin-bottom: 2.4rem;
+      transition: all var(--transition);
+    }
+    .btn-ecommerce-hero:hover { background: var(--btn-hover-bg); color: var(--btn-hover-color); opacity: 0.9; }
+
+  
+    @media (max-width: 768px) {
+      #nav-links {
+        display: none; position: fixed; top: 64px; left: 0; right: 0;
+        background: rgba(15,15,15,0.98); flex-direction: column;
+        padding: 1.5rem 2rem; gap: 1.2rem; border-bottom: 1px solid var(--border);
+        z-index: 99;
+      }
+
+      #nav-links.open { display: flex; }
+      #btn-menu { display: flex; }
+
+      .sec-inner { grid-template-columns: 1fr; gap: 2rem; }
+      /* En mobile la media va arriba del texto */
+      .sec-media { order: 0; }
+      .contacto-inner { grid-template-columns: 1fr; gap: 2rem; }
+    }
+
+    @media (max-width: 480px) {
+      .admin-sidebar { width: 100vw; }
+    }
+
+    /* ═══════════════════════════════════════
+       ADMIN TABS
+    ═══════════════════════════════════════ */
+    .admin-tabs {
+      display: flex; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      background: #0D0D0D;
+    }
+
+    .admin-tab {
+      flex: 1; background: none; border: none;
+      color: var(--muted); font-size: 0.75rem;
+      font-weight: 500; letter-spacing: 0.04em;
+      padding: 0.9rem 0.4rem; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+
+    .admin-tab:hover { color: var(--text); }
+
+    .admin-tab.active {
+      color: var(--gold);
+      border-bottom-color: var(--gold);
+      background: rgba(200,169,110,0.04);
+    }
+
+    .admin-tab-panel {
+      display: none;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .admin-tab-panel.active { display: flex; }
+
+    /* ═══════════════════════════════════════
+       PLANTILLAS
+    ═══════════════════════════════════════ */
+    .plantillas-grid {
+      display: flex; flex-direction: column; gap: 0.8rem;
+    }
+
+    .plantilla-card {
+      border: 1px solid var(--border); border-radius: 10px;
+      overflow: hidden; cursor: pointer;
+      transition: border-color var(--transition), transform var(--transition);
+      background: var(--surface);
+    }
+
+    .plantilla-card:hover { border-color: var(--gold); transform: translateY(-1px); }
+    .plantilla-card.active { border-color: var(--gold); border-width: 2px; }
+
+    /* Mini preview del sitio */
+    .plantilla-preview {
+      border-bottom: 1px solid; overflow: hidden;
+    }
+
+    .pp-navbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; border-bottom: 1px solid;
+    }
+
+    .pp-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+
+    .pp-line {
+      height: 4px; border-radius: 2px; margin: 3px 0;
+    }
+
+    .pp-hero {
+      padding: 14px 12px 10px; display: flex;
+      flex-direction: column; gap: 4px;
+    }
+
+    .pp-title { height: 8px !important; margin-bottom: 2px; }
+
+    .pp-btn {
+      align-self: flex-start; margin-top: 6px;
+      font-size: 7px; font-weight: 700;
+      padding: 3px 8px; letter-spacing: 0.04em;
+    }
+
+    .pp-section {
+      padding: 10px 12px; border-top: 1px solid;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+
+    .plantilla-info {
+      padding: 0.7rem 0.9rem 0.3rem;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+
+    .plantilla-info strong { font-size: 0.88rem; }
+    .plantilla-info span   { font-size: 0.75rem; color: var(--muted); }
+    .plantilla-perfil      { font-size: 0.7rem !important; font-style: italic; }
+
+    .btn-apply-plantilla {
+      margin: 0.4rem 0.9rem 0.8rem;
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); border-radius: var(--radius);
+      padding: 6px 14px; font-size: 0.78rem;
+      cursor: pointer; transition: all var(--transition);
+      width: calc(100% - 1.8rem);
+    }
+
+    .btn-apply-plantilla:hover,
+    .plantilla-card.active .btn-apply-plantilla {
+      border-color: var(--gold); color: var(--gold);
+    }
+
+    /* ═══════════════════════════════════════
+       ADMIN — DISEÑO
+    ═══════════════════════════════════════ */
+    .color-row {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 0.7rem;
+    }
+
+    .color-field {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+
+    .color-field label {
+      font-size: 0.68rem; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--muted);
+    }
+
+    .color-input-group {
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .color-input-group input[type="color"] {
+      width: 36px; height: 36px; padding: 2px;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--bg); cursor: pointer; flex-shrink: 0;
+    }
+
+    .color-input-group input[type="text"] {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      padding: 6px 8px; font-size: 0.78rem;
+      font-family: monospace; letter-spacing: 0.05em;
+    }
+
+    .color-input-group input[type="text"]:focus {
+      outline: none; border-color: var(--gold);
+    }
+
+    .font-select {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); padding: 8px 12px;
+      font-family: var(--font-body); font-size: 0.88rem;
+      cursor: pointer;
+    }
+
+    .font-select:focus { outline: none; border-color: var(--gold); }
+
+    #font-preview {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem; margin-top: 0.5rem;
+    }
+
+    .fp-display {
+      font-size: 1.3rem; font-weight: 700;
+      color: var(--text); line-height: 1.2; margin-bottom: 0.4rem;
+    }
+
+    .fp-body {
+      font-size: 0.82rem; color: var(--muted); line-height: 1.5;
+    }
+
+    .btn-estilo-grid {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 8px;
+    }
+
+    .btn-estilo-opt {
+      display: none;
+    }
+
+    .btn-estilo-opt + label {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 6px; padding: 10px 6px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      cursor: pointer; transition: border-color var(--transition);
+      font-size: 0.72rem; color: var(--muted); text-align: center;
+    }
+
+    .btn-estilo-opt:checked + label {
+      border-color: var(--gold); color: var(--gold);
+    }
+
+    .btn-estilo-preview {
+      width: 100%; padding: 6px 4px;
+      font-size: 0.72rem; font-weight: 600;
+      border-radius: 4px; text-align: center;
+      pointer-events: none;
+    }
+
+    .bep-solid   { background: #C8A96E; color: #0F0F0F; border: 2px solid #C8A96E; }
+    .bep-outline { background: transparent; color: #C8A96E; border: 2px solid #C8A96E; }
+    .bep-ghost   { background: transparent; color: #C8A96E; border: 2px solid transparent; text-decoration: underline; }
+
+    .radius-row {
+      display: flex; align-items: center; gap: 1rem;
+    }
+
+    .radius-row input[type="range"] {
+      flex: 1; accent-color: var(--gold);
+    }
+
+    #ad-btn-radio-val {
+      font-size: 0.82rem; color: var(--gold);
+      min-width: 32px; text-align: right;
+    }
+
+    #btn-preview {
+      display: inline-block;
+      padding: 10px 22px; font-weight: 600;
+      font-size: 0.88rem; cursor: default;
+      transition: all 0.2s;
+      margin-top: 0.5rem;
+    }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0;
+    }
+
+    .toggle-row label { font-size: 0.82rem; color: var(--text); }
+
+    .toggle-switch {
+      position: relative; width: 40px; height: 22px;
+      display: inline-block;
+    }
+
+    .toggle-switch input { display: none; }
+
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: var(--border); border-radius: 99px;
+      cursor: pointer; transition: background 0.2s;
+    }
+
+    .toggle-slider::after {
+      content: ""; position: absolute;
+      left: 3px; top: 3px;
+      width: 16px; height: 16px;
+      border-radius: 50%; background: var(--muted);
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider { background: var(--gold); }
+    .toggle-switch input:checked + .toggle-slider::after {
+      transform: translateX(18px); background: var(--bg);
+    }
+
+    @media (max-width: 768px) {
+      .color-row { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .scroll-line { animation: none; }
+    }
+  </style>
+  <!-- Estilo dinámico: secciones alternas -->
+  <style id="style-alternas">.seccion:nth-child(even) { background: var(--surface); }</style>
+  <style>
+    /* Ocultar sitio hasta que Firebase cargue */
+    #site-content { opacity: 0; transition: opacity 0.35s ease; }
+    #site-content.ready { opacity: 1; }
+
+    #site-loader {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.35s ease;
+    }
+    #site-loader.hidden { opacity: 0; pointer-events: none; }
+
+    .loader-ring {
+      width: 36px; height: 36px;
+      border: 2px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <!-- Loader inicial -->
+  <div id="site-loader"><div class="loader-ring"></div></div>
+
+  <!-- Contenido del sitio (oculto hasta que Firebase responda) -->
+  <div id="site-content">
+
+  <!-- ═══════════════ NAVBAR ═══════════════ -->
+  <nav id="navbar">
+    <a class="nav-brand" href="#">
+      <img id="nav-logo" alt="Logo" />
+      <span id="nav-nombre">Mi Empresa</span>
+    </a>
+    <div id="nav-links"></div>
+    <div class="nav-right">
+      <a id="btn-ecommerce-nav" href="ecommerce.html" style="display:none;">🛍️ Tienda</a>
+      <button id="btn-menu" aria-label="Menú"><span></span><span></span><span></span></button>
+      <button id="btn-admin">Admin</button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════ HERO ═══════════════ -->
+  <section id="hero">
+    <div class="hero-inner">
+      <span class="hero-eyebrow" id="hero-eyebrow">Bienvenidos</span>
+      <h1 id="hero-titulo">Construimos<br/>experiencias digitales</h1>
+      <p id="hero-desc">Explorá nuestro trabajo y conocé todo lo que podemos hacer por vos.</p>
+      <a id="btn-ecommerce-hero" href="ecommerce.html" class="btn-ecommerce-hero" style="display:none;">Ver tienda online →</a>
+      <div class="hero-scroll">
+        <div class="scroll-line"></div>
+        Scroll
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SECCIONES DINÁMICAS ═══════════════ -->
+  <div id="secciones-container"></div>
+
+  <!-- ═══════════════ CONTACTO ═══════════════ -->
+  <section id="contacto">
+    <div class="contacto-inner">
+      <div>
+        <h2 id="contacto-titulo">Contacto</h2>
+        <p class="sec-subtitulo" id="contacto-subtitulo">Estamos para ayudarte</p>
+        <p id="contacto-texto">Completá el formulario y nos comunicamos a la brevedad.</p>
+        <div class="contacto-links">
+
+          <!-- Email -->
+          <div class="contacto-item">
+            <span class="icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            </span>
+            <a href="#" id="contacto-email" target="_blank" rel="noopener">info@miempresa.com</a>
+          </div>
+
+          <!-- Teléfono -->
+          <div class="contacto-item">
+            <span class="icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.18 6.18l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </span>
+            <a href="#" id="contacto-tel">+54 11 0000-0000</a>
+          </div>
+
+          <!-- Dirección -->
+          <div class="contacto-item">
+            <span class="icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            </span>
+            <span id="contacto-dir">Ciudad, País</span>
+          </div>
+
+          <!-- Instagram -->
+          <div class="contacto-item" style="display:none">
+            <span class="icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+            </span>
+            <a href="#" id="contacto-ig" target="_blank" rel="noopener">@usuario</a>
+          </div>
+
+        </div>
+      </div>
+      <div>
+        <form class="contacto-form" onsubmit="return false;">
+          <div class="form-group">
+            <label>Nombre</label>
+            <input type="text" placeholder="Tu nombre" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" placeholder="tu@email.com" />
+          </div>
+          <div class="form-group">
+            <label>Mensaje</label>
+            <textarea rows="5" placeholder="¿En qué podemos ayudarte?"></textarea>
+          </div>
+          <button class="btn-submit" type="submit">Enviar mensaje</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ FOOTER ═══════════════ -->
+  <footer>
+    <span id="footer-nombre">Mi Empresa</span> · Todos los derechos reservados
+    <br/>
+    <a id="btn-descargar-manual" href="manual.html" download style="font-size:0.75rem;color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:5px;margin-top:0.5rem;transition:color 0.2s;">
+      📄 Descargar manual de usuario
+    </a>
+    <br/><span style="font-size:0.7rem;opacity:0.5;">Desarrollado por <a href="https://www.cusol.com.ar" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">cusol.com.ar</a></span>
+  </footer>
+
+  <!-- ═══════════════ WHATSAPP FLOTANTE ═══════════════ -->
+  <a id="wa-float" href="#" target="_blank" rel="noopener" aria-label="Contactar por WhatsApp" style="display:none">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+  </a>
+
+  <!-- ═══════════════ MODAL LOGIN ═══════════════ -->
+  <div id="login-modal">
+    <div class="login-box">
+      <button id="btn-login-close">✕</button>
+      <h3>Panel de Administración</h3>
+      <p>Ingresá el usuario y contraseña que te proporcionó tu administrador.</p>
+      <label>Usuario</label>
+      <input id="login-user" type="text" placeholder="admin" autocomplete="username" />
+      <label>Contraseña</label>
+      <input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password" />
+      <p id="login-error">Usuario o contraseña incorrectos.</p>
+      <button id="btn-login">Ingresar</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ ADMIN PANEL ═══════════════ -->
+  <div id="admin-panel">
+    <div class="admin-overlay" id="admin-overlay"></div>
+    <div class="admin-sidebar">
+
+      <div class="admin-header">
+        <div>
+          <h3>Administración</h3>
+          <span>Modo edición</span>
+        </div>
+        <button id="btn-admin-close">Cerrar</button>
+      </div>
+
+      <div class="admin-tabs">
+        <button class="admin-tab active" data-tab="empresa">🏢 Empresa</button>
+        <button class="admin-tab" data-tab="secciones">📄 Secciones</button>
+        <button class="admin-tab" data-tab="diseno">🎨 Diseño</button>
+      </div>
+
+      <div class="admin-body">
+
+        <!-- ══ TAB 1: EMPRESA ══ -->
+        <div class="admin-tab-panel active" id="tab-empresa">
+
+          <!-- Empresa -->
+          <div>
+            <p class="admin-section-title">Empresa</p>
+            <div class="admin-block">
+              <label>Nombre de la empresa</label>
+              <input id="a-nombre" type="text" />
+              <label>Logo</label>
+              <div class="logo-row">
+                <img id="logo-preview" alt="Logo actual" />
+                <label class="btn-upload-label">
+                  📷 Subir logo
+                  <input id="logo-upload" type="file" accept="image/*" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Portada -->
+          <div>
+            <p class="admin-section-title">Portada</p>
+            <div class="admin-block">
+              <label>Texto pequeño (eyebrow)</label>
+              <input id="a-p-eyebrow" type="text" placeholder="ej: Bienvenidos" />
+              <label>Título principal</label>
+              <textarea id="a-p-titulo" rows="3" placeholder="ej: Construimos&#10;experiencias digitales" style="resize:vertical;"></textarea>
+              <p style="font-size:0.72rem;color:var(--muted);margin-top:-4px;">Usá Enter para saltos de línea en el título.</p>
+              <label>Subtítulo / descripción</label>
+              <textarea id="a-p-subtitulo" rows="3" placeholder="Descripción breve de la empresa o propuesta de valor."></textarea>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ══ TAB 2: SECCIONES ══ -->
+        <div class="admin-tab-panel" id="tab-secciones">
+
+          <!-- Secciones -->
+          <div>
+            <p class="admin-section-title">Secciones</p>
+            <div id="admin-secciones"></div>
+            <button id="btn-add-sec">+ Agregar sección</button>
+          </div>
+
+          <!-- Contacto -->
+          <div>
+            <p class="admin-section-title">Sección de Contacto</p>
+            <div class="admin-block">
+              <label>Título</label>
+              <input id="a-c-titulo" type="text" />
+              <label>Subtítulo</label>
+              <input id="a-c-subtitulo" type="text" />
+              <label>Texto introductorio</label>
+              <textarea id="a-c-texto" rows="3"></textarea>
+              <label>Email</label>
+              <input id="a-c-email" type="email" />
+              <label>Teléfono</label>
+              <input id="a-c-tel" type="tel" />
+              <label>Dirección</label>
+              <input id="a-c-dir" type="text" />
+              <label>WhatsApp (número con código de país, ej: 5491100000000)</label>
+              <input id="a-c-wa" type="tel" placeholder="5491100000000" />
+              <label>Mensaje de WhatsApp (lo que se envía al abrir el chat)</label>
+              <input id="a-c-wamsg" type="text" placeholder="Hola, me interesa..." />
+              <label>Instagram (usuario o URL del perfil)</label>
+              <input id="a-c-ig" type="text" placeholder="@usuario o https://instagram.com/usuario" />
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ══ TAB 3: DISEÑO ══ -->
+        <div class="admin-tab-panel" id="tab-diseno">
+
+          <!-- Plantillas -->
+          <div>
+            <p class="admin-section-title">✦ Plantillas</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Elegí una base visual. Podés personalizar colores, tipografías y botones después.</p>
+            <div class="plantillas-grid" id="plantillas-grid"></div>
+            <button id="btn-deshacer-plantilla" style="display:none;margin-top:0.8rem;width:100%;background:none;border:1px solid var(--border);color:var(--muted);border-radius:var(--radius);padding:9px;font-size:0.82rem;cursor:pointer;transition:all var(--transition);">
+              ↩ Deshacer cambio de plantilla
+            </button>
+          </div>
+
+          <!-- Diseño -->
+          <div>
+            <p class="admin-section-title">🎨 Diseño personalizado</p>
+
+            <!-- Colores -->
+            <p style="font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem;">Paleta de colores</p>
+            <div class="color-row">
+
+              <div class="color-field">
+                <label>Fondo principal</label>
+                <div class="color-input-group">
+                  <input type="color" id="ad-bg" value="#0F0F0F" />
+                  <input type="text"  id="ad-bg-hex" value="#0F0F0F" maxlength="7" />
+                </div>
+              </div>
+
+              <div class="color-field">
+                <label>Superficies</label>
+                <div class="color-input-group">
+                  <input type="color" id="ad-surface" value="#1A1A1A" />
+                  <input type="text"  id="ad-surface-hex" value="#1A1A1A" maxlength="7" />
+                </div>
+              </div>
+
+              <div class="color-field">
+                <label>Bordes</label>
+                <div class="color-input-group">
+                  <input type="color" id="ad-border" value="#2D2D2D" />
+                  <input type="text"  id="ad-border-hex" value="#2D2D2D" maxlength="7" />
+                </div>
+              </div>
+
+              <div class="color-field">
+                <label>Texto</label>
+                <div class="color-input-group">
+                  <input type="color" id="ad-texto" value="#F5F0E8" />
+                  <input type="text"  id="ad-texto-hex" value="#F5F0E8" maxlength="7" />
+                </div>
+              </div>
+
+              <div class="color-field">
+                <label>Texto secundario</label>
+                <div class="color-input-group">
+                  <input type="color" id="ad-muted" value="#8A8078" />
+                  <input type="text"  id="ad-muted-hex" value="#8A8078" maxlength="7" />
+                </div>
+              </div>
+
+              <div class="color-field">
+                <label>Color acento</label>
+                <div class="color-input-group">
+                  <input type="color" id="ad-acento" value="#C8A96E" />
+                  <input type="text"  id="ad-acento-hex" value="#C8A96E" maxlength="7" />
+                </div>
+              </div>
+
+              <div class="color-field" style="grid-column:1/-1">
+                <label>Acento oscuro (hover)</label>
+                <div class="color-input-group">
+                  <input type="color" id="ad-acentodim" value="#7A6543" />
+                  <input type="text"  id="ad-acentodim-hex" value="#7A6543" maxlength="7" />
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Tipografía -->
+            <p style="font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin:1.2rem 0 0.6rem;">Tipografía</p>
+            <div class="admin-block">
+              <label>Fuente de títulos</label>
+              <select id="ad-font-display" class="font-select">
+                <option>Playfair Display</option>
+                <option>Merriweather</option>
+                <option>Lora</option>
+                <option>Cormorant Garamond</option>
+                <option>DM Serif Display</option>
+                <option>Libre Baskerville</option>
+                <option>EB Garamond</option>
+                <option>Abril Fatface</option>
+                <option>Raleway</option>
+                <option>Oswald</option>
+                <option>Montserrat</option>
+                <option>Poppins</option>
+                <option>Nunito</option>
+                <option>Bebas Neue</option>
+              </select>
+              <label>Fuente de texto y UI</label>
+              <select id="ad-font-body" class="font-select">
+                <option>Inter</option>
+                <option>Roboto</option>
+                <option>Open Sans</option>
+                <option>Lato</option>
+                <option>Source Sans 3</option>
+                <option>Nunito Sans</option>
+                <option>DM Sans</option>
+                <option>Manrope</option>
+                <option>Work Sans</option>
+                <option>Karla</option>
+                <option>Mulish</option>
+                <option>Plus Jakarta Sans</option>
+              </select>
+              <div id="font-preview">
+                <div class="fp-display">Playfair Display</div>
+                <div class="fp-body">Inter — El texto del cuerpo usa esta tipografía para párrafos y UI.</div>
+              </div>
+            </div>
+
+            <!-- Estilo de botones -->
+            <p style="font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin:1.2rem 0 0.6rem;">Estilo de botones</p>
+            <div class="btn-estilo-grid">
+              <div>
+                <input type="radio" name="btn-estilo" id="ad-btn-estilo" value="solid" class="btn-estilo-opt" checked />
+                <label for="ad-btn-estilo">
+                  <div class="btn-estilo-preview bep-solid">Acción</div>
+                  Sólido
+                </label>
+              </div>
+              <div>
+                <input type="radio" name="btn-estilo" id="ad-btn-estilo-outline" value="outline" class="btn-estilo-opt" />
+                <label for="ad-btn-estilo-outline">
+                  <div class="btn-estilo-preview bep-outline">Acción</div>
+                  Contorno
+                </label>
+              </div>
+              <div>
+                <input type="radio" name="btn-estilo" id="ad-btn-estilo-ghost" value="ghost" class="btn-estilo-opt" />
+                <label for="ad-btn-estilo-ghost">
+                  <div class="btn-estilo-preview bep-ghost">Acción</div>
+                  Texto
+                </label>
+              </div>
+            </div>
+
+            <!-- Radio de bordes -->
+            <p style="font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin:1.2rem 0 0.6rem;">Radio de bordes</p>
+            <div class="radius-row">
+              <input type="range" id="ad-btn-radio" min="0" max="40" value="6" step="1" />
+              <span id="ad-btn-radio-val">6px</span>
+            </div>
+            <div>
+              <span id="btn-preview" style="background:#C8A96E;color:#0F0F0F;border:2px solid #C8A96E;border-radius:6px;padding:10px 22px;font-weight:600;font-size:0.88rem;display:inline-block;margin-top:0.5rem;cursor:default;">
+                Vista previa
+              </span>
+            </div>
+
+            <!-- Layout -->
+            <p style="font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin:1.2rem 0 0.6rem;">Layout</p>
+            <div class="toggle-row">
+              <label for="ad-alternas">Secciones con fondo alterno</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="ad-alternas" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <label for="ad-ecommerce">Activar tienda online (link a ecommerce.html)</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="ad-ecommerce" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="admin-footer">
+        <button id="btn-guardar">💾 Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast de notificaciones -->
+  <div id="toast" class="toast"></div>
+
+</div><!-- /site-content -->
+
+</body>
+</html>
