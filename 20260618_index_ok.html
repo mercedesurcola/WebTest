@@ -27,12 +27,13 @@
     };
     // ── ▲ FIN EDITAR ▲ ──────────────────────────────────────────
 
+    // ── Credenciales del admin ───────────────────────────────────
+    const ADMIN_USER = "admin";
+    const ADMIN_PASS = "123";
+    // ────────────────────────────────────────────────────────────
+
     const app     = initializeApp(firebaseConfig);
     const db      = getDatabase(app);
-
-    // ── Sesión activa ────────────────────────────────────────────
-    let currentUser = null; // { username, rol }
-    // ────────────────────────────────────────────────────────────
 
     // ── Datos por defecto ────────────────────────────────────────
     const DEFAULT_DATA = {
@@ -150,27 +151,6 @@
     // ── Guardar en Firebase ──────────────────────────────────────
     async function saveData(data) {
       await set(ref(db, "sitio"), data);
-    }
-
-    // ── Usuarios: cargar o inicializar ───────────────────────────
-    const DEFAULT_USUARIOS = {
-      administrador: { pass: "cusol", rol: "superadmin" },
-      admin:         { pass: "123",   rol: "admin" }
-    };
-
-    async function loadUsuarios() {
-      const snap = await get(ref(db, "usuarios"));
-      if (snap.exists()) return snap.val();
-      await set(ref(db, "usuarios"), DEFAULT_USUARIOS);
-      return DEFAULT_USUARIOS;
-    }
-
-    async function loginUser(username, pass) {
-      const snap = await get(ref(db, `usuarios/${username}`));
-      if (!snap.exists()) return null;
-      const u = snap.val();
-      if (u.pass !== pass) return null;
-      return { username, rol: u.rol };
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -442,20 +422,9 @@
     // ══════════════════════════════════════════════════════════════
     let siteData = null;
 
-    function buildAdminPanel(data, rol) {
+    function buildAdminPanel(data) {
       siteData = JSON.parse(JSON.stringify(data)); // deep clone
       const panel = document.getElementById("admin-panel");
-
-      // Mostrar/ocultar tab Usuarios según rol
-      const tabUsuarios = document.getElementById("tab-btn-usuarios");
-      const secUsuarios = document.getElementById("tab-usuarios");
-      if (rol === "superadmin") {
-        tabUsuarios.style.display = "inline-flex";
-        buildAdminUsuarios();
-      } else {
-        tabUsuarios.style.display = "none";
-        if (secUsuarios) secUsuarios.style.display = "none";
-      }
 
       // Empresa
       document.getElementById("a-nombre").value = data.empresa.nombre;
@@ -876,68 +845,6 @@
       });
     }
 
-    // ── Panel de gestión de usuarios (solo superadmin) ───────────
-    async function buildAdminUsuarios() {
-      const cont = document.getElementById("admin-usuarios-list");
-      if (!cont) return;
-      cont.innerHTML = `<p style="font-size:0.8rem;color:var(--muted);">Cargando…</p>`;
-
-      try {
-        const snap = await get(ref(db, "usuarios"));
-        const usuarios = snap.exists() ? snap.val() : {};
-        cont.innerHTML = "";
-
-        Object.entries(usuarios).forEach(([username, u]) => {
-          const div = document.createElement("div");
-          div.className = "usuario-card";
-          div.innerHTML = `
-            <div class="usuario-header">
-              <span class="usuario-nombre">${username}</span>
-              <span class="usuario-rol-tag ${u.rol === 'superadmin' ? 'tag-super' : 'tag-admin'}">
-                ${u.rol === 'superadmin' ? 'Super Admin' : 'Admin'}
-              </span>
-            </div>
-            <label>Nueva contraseña</label>
-            <div class="pass-row">
-              <input type="password" class="usuario-pass-input" data-user="${username}"
-                placeholder="Nueva contraseña" autocomplete="new-password" />
-              <button class="btn-save-pass" data-user="${username}">Guardar</button>
-            </div>`;
-          cont.appendChild(div);
-        });
-
-        cont.querySelectorAll(".btn-save-pass").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const uname = btn.dataset.user;
-            const input = cont.querySelector(`.usuario-pass-input[data-user="${uname}"]`);
-            const newPass = input.value.trim();
-            if (!newPass) { showToast("Ingresá una contraseña.", "error"); return; }
-            if (newPass.length < 3) { showToast("Mínimo 3 caracteres.", "error"); return; }
-            try {
-              await set(ref(db, `usuarios/${uname}/pass`), newPass);
-              input.value = "";
-              showToast(`Contraseña de ${uname} actualizada ✓`);
-            } catch(e) {
-              showToast("Error al guardar. Revisá Firebase.", "error");
-            }
-          });
-        });
-
-        // Inicializar toggle ecommerce con el valor actual
-        const chkEc = document.getElementById("ad-ecommerce");
-        if (chkEc && siteData?.diseno) {
-          chkEc.checked = siteData.diseno.ecommerce === true;
-          chkEc.addEventListener("change", () => {
-            if (!siteData.diseno) siteData.diseno = {};
-            siteData.diseno.ecommerce = chkEc.checked;
-          });
-        }
-
-      } catch(e) {
-        cont.innerHTML = `<p style="font-size:0.8rem;color:var(--danger);">Error al cargar usuarios. Revisá Firebase.</p>`;
-      }
-    }
-
     // ── Toast ─────────────────────────────────────────────────────
     function showToast(msg, type = "ok") {
       const t = document.getElementById("toast");
@@ -952,7 +859,6 @@
 
       // Cargar y renderizar
       const data = await loadData();
-      await loadUsuarios(); // inicializa /usuarios en Firebase si no existe
       renderSite(data);
 
       // Revelar sitio, ocultar loader
@@ -963,33 +869,16 @@
       setTimeout(() => loader.remove(), 400);
 
       // ── Login admin ──────────────────────────────────────────────
-      document.getElementById("btn-login").addEventListener("click", async () => {
+      document.getElementById("btn-login").addEventListener("click", () => {
         const u = document.getElementById("login-user").value.trim();
         const p = document.getElementById("login-pass").value;
-        const errEl = document.getElementById("login-error");
-        errEl.style.display = "none";
-        const btn = document.getElementById("btn-login");
-        btn.textContent = "Verificando…";
-        btn.disabled = true;
-        try {
-          const user = await loginUser(u, p);
-          if (user) {
-            currentUser = user;
-            document.getElementById("login-modal").style.display = "none";
-            document.getElementById("admin-panel").style.display = "flex";
-            document.getElementById("admin-username").textContent = user.username;
-            document.getElementById("admin-rol-badge").textContent =
-              user.rol === "superadmin" ? "Super Admin" : "Admin";
-            buildAdminPanel(data, user.rol);
-          } else {
-            errEl.style.display = "block";
-          }
-        } catch(e) {
-          errEl.textContent = "Error de conexión. Revisá Firebase.";
-          errEl.style.display = "block";
+        if (u === ADMIN_USER && p === ADMIN_PASS) {
+          document.getElementById("login-modal").style.display = "none";
+          document.getElementById("admin-panel").style.display = "flex";
+          buildAdminPanel(data);
+        } else {
+          document.getElementById("login-error").style.display = "block";
         }
-        btn.textContent = "Ingresar";
-        btn.disabled = false;
       });
 
       document.getElementById("login-pass").addEventListener("keydown", e => {
@@ -2174,45 +2063,6 @@
     @media (prefers-reduced-motion: reduce) {
       .scroll-line { animation: none; }
     }
-
-    /* ── Usuarios ── */
-    .usuario-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px; padding: 1rem;
-      display: flex; flex-direction: column; gap: 0.6rem;
-      margin-bottom: 0.8rem;
-    }
-    .usuario-header { display: flex; align-items: center; gap: 0.7rem; }
-    .usuario-nombre { font-weight: 600; font-size: 0.9rem; color: var(--text); }
-    .usuario-rol-tag {
-      font-size: 0.65rem; font-weight: 700;
-      letter-spacing: 0.08em; text-transform: uppercase;
-      padding: 2px 8px; border-radius: 99px;
-    }
-    .tag-super { background: rgba(200,169,110,0.15); color: var(--gold); border: 1px solid var(--gold-dim); }
-    .tag-admin { background: rgba(138,128,120,0.15); color: var(--muted); border: 1px solid var(--border); }
-    .usuario-card label {
-      font-size: 0.72rem; letter-spacing: 0.06em;
-      text-transform: uppercase; color: var(--muted);
-    }
-    .pass-row { display: flex; gap: 8px; }
-    .usuario-pass-input {
-      flex: 1; background: var(--bg);
-      border: 1px solid var(--border); border-radius: var(--radius);
-      color: var(--text); padding: 8px 12px;
-      font-family: var(--font-body); font-size: 0.86rem;
-      transition: border-color var(--transition);
-    }
-    .usuario-pass-input:focus { outline: none; border-color: var(--gold); }
-    .btn-save-pass {
-      background: var(--gold); color: var(--bg);
-      border: none; border-radius: var(--radius);
-      padding: 8px 14px; font-weight: 600;
-      font-size: 0.82rem; cursor: pointer;
-      transition: opacity var(--transition); white-space: nowrap;
-    }
-    .btn-save-pass:hover { opacity: 0.85; }
   </style>
   <!-- Estilo dinámico: secciones alternas -->
   <style id="style-alternas">.seccion:nth-child(even) { background: var(--surface); }</style>
@@ -2379,8 +2229,7 @@
       <div class="admin-header">
         <div>
           <h3>Administración</h3>
-          <span id="admin-rol-badge">Admin</span>
-          <span style="color:var(--muted);font-size:0.68rem;margin-left:6px;">· <span id="admin-username"></span></span>
+          <span>Modo edición</span>
         </div>
         <button id="btn-admin-close">Cerrar</button>
       </div>
@@ -2389,7 +2238,6 @@
         <button class="admin-tab active" data-tab="empresa">🏢 Empresa</button>
         <button class="admin-tab" data-tab="secciones">📄 Secciones</button>
         <button class="admin-tab" data-tab="diseno">🎨 Diseño</button>
-        <button class="admin-tab" data-tab="usuarios" id="tab-btn-usuarios" style="display:none;">⚙️ Configuración</button>
       </div>
 
       <div class="admin-body">
@@ -2634,32 +2482,19 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
+            <div class="toggle-row">
+              <label for="ad-ecommerce">Activar tienda online (link a ecommerce.html)</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="ad-ecommerce" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
 
           </div>
 
         </div>
 
-        <!-- ══ TAB 4: CONFIGURACIÓN (solo superadmin) ══ -->
-        <div class="admin-tab-panel" id="tab-usuarios">
-
-          <!-- Contraseñas -->
-          <p class="admin-section-title">🔑 Contraseñas</p>
-          <p style="font-size:0.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.5;">Modificá las contraseñas de acceso al panel de administración.</p>
-          <div id="admin-usuarios-list"></div>
-
-          <!-- Tienda online -->
-          <p class="admin-section-title" style="margin-top:1.5rem;">🛒 Tienda online</p>
-          <div class="toggle-row">
-            <label for="ad-ecommerce">Activar tienda online (link a ecommerce.html)</label>
-            <label class="toggle-switch">
-              <input type="checkbox" id="ad-ecommerce" />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
-        </div>
-
-      </div><!-- /admin-body -->
+      </div>
 
       <div class="admin-footer">
         <button id="btn-guardar">💾 Guardar cambios</button>
